@@ -1,0 +1,17 @@
+name: lookup
+description: Constant (immutable) data structures for effiecient lookup, indexing and search in memory and on disk. 
+version: 0.0.1
+repository: https://github.com/agilord/lookup
+topics:
+  - binary
+  - data-structures
+  - search
+
+environment:
+  sdk: ^3.5.0
+
+# dependencies:
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.24.0
