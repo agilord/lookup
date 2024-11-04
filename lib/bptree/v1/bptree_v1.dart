@@ -400,7 +400,7 @@ class BPTreeV1Mutable implements MutableLookupMap {
     final dirty = _dirty;
 
     if (dirty != null) {
-      if (dirty.length > _maxDirtyLength) {
+      if (dirty.length >= _maxDirtyLength) {
         _dirty = null;
 
         final allEntries = [
