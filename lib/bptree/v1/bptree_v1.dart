@@ -1,6 +1,7 @@
 /// Implements a B+tree.
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:lookup/src/parts/key_value_entries_v1.dart';
@@ -240,6 +241,11 @@ abstract class BPTreeV1 implements LookupMap {
     writer.write(kvBytes);
     return writer.toBytes();
   }
+
+  bool append(List<int> key, List<int> value) {
+    // TODO: If there’s extra space available and the entry can fit, append it.
+    return false;
+  }
 }
 
 class _BPTreeV1 implements BPTreeV1 {
@@ -250,6 +256,7 @@ class _BPTreeV1 implements BPTreeV1 {
   final Uint8List? _postfixBytes;
   final OffsetIndexV1? _offsetIndex;
   final KeyValueEntriesV1 _entries;
+
   _BPTreeV1._(
     this._endian,
     this.customData,
@@ -325,7 +332,138 @@ class _BPTreeV1 implements BPTreeV1 {
 
   @override
   Iterable<Uint8List> listKeys() {
-    // TODO: implement listKeys
+    // TODO: implement listKeys (Should return [Uint8List] or a decoded `List<int>`?)
     throw UnimplementedError();
+  }
+
+  @override
+  Iterable<MapEntry<Uint8List, Uint8List>> listEntries() {
+    // TODO: Implement listEntries (should have a fast implementation without multiple accesses to [getValue]).
+    throw UnimplementedError();
+  }
+
+  @override
+  // TODO: Implement length (should be able to easily read the length from serialized bytes).
+  int get length => throw UnimplementedError();
+
+  @override
+  bool append(List<int> key, List<int> value) {
+    // TODO: Implement append (should write the new entry to the optionally allocated extra bytes).
+    throw UnimplementedError();
+  }
+
+  @override
+  Uint8List? delete(List<int> key) {
+    // TODO: Implement delete (should mark an entry as deleted without actually removing it from serialization to avoid a full rewrite).
+    throw UnimplementedError();
+  }
+}
+
+class BPTreeV1Mutable implements MutableLookupMap {
+  _BPTreeV1 _clean;
+  _BPTreeV1? _dirty;
+  int _maxDirtyLength;
+
+  BPTreeV1Mutable._(this._clean, this._dirty, {int maxDirtyLength = 100})
+      : _maxDirtyLength = math.max(maxDirtyLength, 10);
+
+  factory BPTreeV1Mutable.parse(Uint8List cleanBytes,
+          [Uint8List? dirtyBytes]) =>
+      BPTreeV1Mutable._(
+        BPTreeV1.parse(cleanBytes) as _BPTreeV1,
+        dirtyBytes != null ? BPTreeV1.parse(dirtyBytes) as _BPTreeV1 : null,
+      );
+
+  int get maxDirtyLength => _maxDirtyLength;
+
+  set maxDirtyLength(int value) {
+    _maxDirtyLength = math.max(value, 10);
+  }
+
+  @override
+  int get length {
+    final dirty = _dirty;
+    return dirty != null ? _clean.length + dirty.length : _clean.length;
+  }
+
+  @override
+  Uint8List? getValue(List<int> key) =>
+      _clean.getValue(key) ?? _dirty?.getValue(key);
+
+  @override
+  Uint8List? delete(List<int> key) => _clean.delete(key) ?? _dirty?.delete(key);
+
+  @override
+  Uint8List? putValue(List<int> key, List<int> value) {
+    final prev = delete(key);
+
+    final dirty = _dirty;
+
+    if (dirty != null) {
+      if (dirty.length > _maxDirtyLength) {
+        _dirty = null;
+
+        final allEntries = [
+          ..._clean.listEntries(),
+          ...dirty.listEntries(),
+          MapEntry(key, value),
+        ];
+
+        _clean = _buildClean(allEntries);
+        return prev;
+      } else if (dirty.append(key, value)) {
+        return prev;
+      }
+    }
+
+    final dirtyEntries = [
+      ...?dirty?.listEntries(),
+      MapEntry(key, value),
+    ];
+
+    _dirty = _buildDirty(dirtyEntries);
+    return prev;
+  }
+
+  _BPTreeV1 _buildClean(Iterable<MapEntry<List<int>, List<int>>> entries) {
+    return BPTreeV1.parse(BPTreeV1.build(
+      entries,
+      endian: _clean._endian,
+      keepEntryOrder: true,
+      skipOffsetIndex: false,
+      usePadding: false, // _clean.padded
+    )) as _BPTreeV1;
+  }
+
+  _BPTreeV1 _buildDirty(Iterable<MapEntry<List<int>, List<int>>> entries) {
+    return BPTreeV1.parse(BPTreeV1.build(
+      entries,
+      endian: _clean._endian,
+      keepEntryOrder: false,
+      skipOffsetIndex: true,
+      usePadding: false, // _clean.padded
+    )) as _BPTreeV1;
+  }
+
+  @override
+  Iterable<Uint8List> listKeys() {
+    final dirty = _dirty;
+    return dirty != null
+        ? [
+            ..._clean.listKeys(),
+            ...dirty.listKeys()
+          ] // TODO: use  `CombinedIterableView` from `collection`
+        : _clean.listKeys();
+  }
+
+  @override
+  Iterable<MapEntry<Uint8List, Uint8List>> listEntries() {
+    final dirty = _dirty;
+    return dirty != null
+        ? [
+            ..._clean.listEntries(),
+            ...dirty.listEntries()
+          ] // TODO: use  `CombinedIterableView` from `collection`
+        : _clean.listEntries();
   }
 }
